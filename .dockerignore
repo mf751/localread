@@ -1,0 +1,19 @@
+# Build context hygiene. The Dockerfile only needs the sources plus the lock
+# files; everything below is local state, build output or VCS data.
+
+# runtime state (SQLite DB + cached audio) — must NOT be baked into the image
+backend/data/
+backend/localread
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# dependencies / build output (npm ci and the builder regenerate these)
+frontend/node_modules/
+frontend/dist/
+
+# VCS + misc
+.git/
+.gitignore
+*.log
+.DS_Store

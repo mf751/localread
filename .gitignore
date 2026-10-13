@@ -1,0 +1,12 @@
+# backend
+backend/data/
+backend/localread
+backend/*.db
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+
+# misc
+*.log
+.DS_Store

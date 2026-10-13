@@ -1,0 +1,24 @@
+# Convenience wrapper for the `docker run` command in the README.
+#
+# Host networking (Linux) makes the container share your machine's network
+# stack, so the speech server is reachable at the same URL it has on your host
+# (http://localhost:8880 by default). The app listens on :8080 unless you set
+# LOCALREAD_ADDR, e.g. `-e LOCALREAD_ADDR=127.0.0.1:8099`.
+#
+# Without host networking, publish a port, join a Docker network with the speech
+# container, and set the model base URL on the TTS page to that container name
+# (see the README).
+
+services:
+  localread:
+    image: mf751/localread:latest
+    container_name: localread
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      # SQLite DB + generated audio cache
+      - localread-data:/data
+
+volumes:
+  localread-data:
+    name: localread-data

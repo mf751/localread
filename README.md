@@ -7,14 +7,17 @@ several models (any OpenAI-compatible `/v1/audio/speech` server, e.g. LocalAI's
 `qwen3-tts-cpp`, or Kokoro's captioned endpoint) on the **TTS** page and pick
 which one to use. Models that return word timings get word-by-word highlighting
 in the reader, and the page follows along by scrolling to keep the highlighted
-word in view; models that only return audio just play. The UI is a left sidebar
-shell with **light and dark themes** (remembered per browser).
+word in view; models that only return audio just play.
 
 ```
 localread/
   backend/    Go API + TTS proxy + storage (SQLite)
   frontend/   React (Vite + TypeScript) UI
 ```
+
+![localread demo 1](demo1.png)
+
+![localread demo 2](demo2.png)
 
 ## Backend
 
@@ -23,11 +26,6 @@ cd backend
 go run .
 ```
 
-Serves on `:8099` (override with `LOCALREAD_ADDR`). Data (SQLite DB, imported
-novels, generated audio) lives in `./data` by default; override with
-`LOCALREAD_DATA`.
-
-### Environment
 
 | Var | Default | Purpose |
 | --- | --- | --- |
@@ -61,10 +59,7 @@ Open the **TTS** page to list your models and add a new one (name, base URL,
 optional API key, model, voice, speed, language). You choose which model is in
 use; the backend sends all speech to it.
 
-Enter the **server root** as the base URL (e.g. `http://localhost:8080`, not
-`http://localhost:8080/v1/audio/speech`). If you paste a full endpoint anyway the
-backend strips the known suffix (`/v1/audio/speech`, `/v1/audio`, `/v1`,
-`/dev/captioned_speech`) so it still works.
+Enter the **server root** as the base URL (e.g. `http://localhost:8080`)
 
 When a model is saved or tested the backend probes it:
 
@@ -72,49 +67,6 @@ When a model is saved or tested the backend probes it:
   timestamps, so the reader highlights words as they are spoken.
 - A plain OpenAI-compatible server (LocalAI, etc.) only returns audio; the
   reader just plays it.
-
-If the probe fails, the TTS page shows the provider's own error message (wrong
-URL, rejected voice, model still loading, …) instead of a generic “no response”.
-For LocalAI's `qwen3-tts-cpp` the voice must be a voice profile,
-`localai://voice-profiles/<id>`, not a generic name like `default`.
-
-The frontend never talks to a TTS server directly — it always asks the backend,
-which also caches the result.
-
-## Speech (LocalAI) troubleshooting
-
-If "Generate speech" fails with:
-
-```
-tts returned 500: {"error":{"code":500,"message":"rpc error: code = Unavailable
-desc = error reading from server: EOF","type":""}}
-```
-
-the local voice backend crashed, not the reader. The usual cause on a small GPU
-(e.g. 4 GB GTX 1650) is that LocalAI's `qwen3-tts-cpp` backend offloads every
-layer and runs out of VRAM during synthesis:
-
-```
-ggml_backend_cuda_buffer_type_alloc_buffer: ... cudaMalloc failed: out of memory
-SIGSEGV: segmentation violation
-```
-
-Fix: let the backend borrow system RAM with `GGML_CUDA_ENABLE_UNIFIED_MEMORY=1`.
-The backend is launched via its `run.sh` inside the container, so:
-
-```sh
-scripts/fix-localai-tts.sh          # patches /backends/cuda13-qwen3-tts-cpp/run.sh
-curl -s -X POST http://localhost:8080/backend/shutdown \
-  -H 'Content-Type: application/json' -d '{"model":"qwen3-tts-cpp"}'   # force a reload
-```
-
-Re-run the script after installing or upgrading the backend (an upgrade replaces
-`run.sh`). The permanent alternative is to recreate the LocalAI container with
-`-e GGML_CUDA_ENABLE_UNIFIED_MEMORY=1` added to its `docker run` command.
-
-You can confirm the backend state at
-`GET /api/backend-logs/qwen3-tts-cpp`; a healthy load prints
-`[Load] Talker backend: CUDA0` and generation finishes with `[Perf] Total … RTF < 1`.
 
 ## Frontend
 
@@ -184,15 +136,3 @@ talk by container name. (Alternatively, publish the speech server on the host's
 `0.0.0.0` and use `http://host.docker.internal:8880` with
 `--add-host=host.docker.internal:host-gateway`.)
 
-## Security notes
-
-All filesystem reads/writes for user-supplied content go through
-`safeJoin(root, rel)` in `backend/safeserve.go`, which rejects traversal
-(`..`), absolute paths, and NUL bytes, and re-verifies containment after
-resolution. Generated audio is cached under the data root and served with
-`http.ServeContent` (with range support). The audio cache is keyed by the voice
-model settings (provider + base URL + model + voice + speed + language), so
-changing the model regenerates into a separate file rather than reusing or
-overwriting another model's audio; Generate reuses a cached file when one exists
-for the current settings. This is handled entirely in the backend — the frontend
-only calls the reader's `/api/chapters/{id}/audio` endpoints.
